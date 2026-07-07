@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Panel - JWT_CRUD</title>
+<style>
+    * { box-sizing: border-box; }
+    body {
+        font-family: 'Segoe UI', Arial, sans-serif;
+        background: #f0f2f5;
+        margin: 0;
+        padding: 20px;
+        color: #222;
+    }
+    h1 {
+        font-size: 22px;
+        color: #1F4E79;
+        margin-bottom: 4px;
+    }
+    .subtitle {
+        color: #666;
+        font-size: 13px;
+        margin-bottom: 20px;
+    }
+    .panel {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        padding: 16px 20px;
+        margin-bottom: 20px;
+    }
+    .panel h2 {
+        font-size: 16px;
+        margin: 0 0 12px 0;
+        color: #1F4E79;
+        border-bottom: 2px solid #2E75B6;
+        padding-bottom: 6px;
+    }
+    .token-row {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .token-row input {
+        flex: 1;
+        min-width: 250px;
+        padding: 8px 10px;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        font-family: Consolas, monospace;
+        font-size: 12px;
+    }
+    button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        background: #2E75B6;
+        color: #fff;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: bold;
+    }
+    button:hover { background: #1F4E79; }
+    button.secondary {
+        background: #888;
+    }
+    button.secondary:hover { background: #666; }
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+    }
+    th, td {
+        border: 1px solid #e0e0e0;
+        padding: 8px 10px;
+        text-align: left;
+    }
+    th {
+        background: #1F4E79;
+        color: #fff;
+    }
+    tr:nth-child(even) { background: #f7f9fc; }
+    .empty-msg {
+        color: #999;
+        font-style: italic;
+        padding: 10px 0;
+    }
+    .console {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: Consolas, monospace;
+        font-size: 13px;
+        border-radius: 6px;
+        padding: 12px;
+        height: 260px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+    }
+    .console .ok { color: #6ce16c; }
+    .console .err { color: #ff6b6b; }
+    .console .info { color: #6cb6ff; }
+    .console .ts { color: #888; }
+    .top-controls {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 12px;
+    }
+    .auto-row {
+        font-size: 13px;
+        color: #555;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+    .status-dot {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        margin-right: 6px;
+        background: #ccc;
+    }
+    .status-dot.green { background: #4caf50; }
+    .status-dot.red { background: #e53935; }
+</style>
+</head>
+<body>
+
+<h1>Panel de Monitoreo - JWT_CRUD API</h1>
+<div class="subtitle">Visualiza en tiempo real el estado de la tabla "productos" y un registro de las operaciones realizadas.</div>
+
+<div class="panel">
+    <h2>Token de acceso</h2>
+    <div class="token-row">
+        <input type="text" id="tokenInput" placeholder="Pega aquí el token JWT obtenido en Postman (POST /login.php)">
+        <button onclick="actualizar()">Actualizar ahora</button>
+        <label class="auto-row">
+            <input type="checkbox" id="autoRefresh" onchange="toggleAuto()">
+            Auto-actualizar cada
+            <select id="intervalo">
+                <option value="3000">3s</option>
+                <option value="5000" selected>5s</option>
+                <option value="10000">10s</option>
+            </select>
+        </label>
+    </div>
+</div>
+
+<div class="panel">
+    <div class="top-controls">
+        <h2 style="margin:0; border:none; padding:0;">Estado actual de la base de datos (tabla productos)</h2>
+        <div><span class="status-dot" id="statusDot"></span><span id="statusText">Sin conexión</span></div>
+    </div>
+    <div id="tablaContainer">
+        <div class="empty-msg">Pega tu token y presiona "Actualizar ahora" para cargar los productos.</div>
+    </div>
+</div>
+
+<div class="panel">
+    <h2>Registro de actividad</h2>
+    <div class="console" id="consola"></div>
+</div>
+
+<script>
+const API_URL = "index.php"; // Misma carpeta que este archivo (JWT_CRUD/)
+let intervalId = null;
+let ultimaFoto = null; // Para detectar cambios entre actualizaciones
+
+function ahora() {
+    const d = new Date();
+    return d.toLocaleTimeString('es-PA', { hour12: false });
+}
+
+function log(mensaje, tipo) {
+    const consola = document.getElementById('consola');
+    const linea = document.createElement('div');
+    const clase = tipo || 'info';
+    linea.innerHTML = '<span class="ts">[' + ahora() + ']</span> <span class="' + clase + '">' + mensaje + '</span>';
+    consola.appendChild(linea);
+    consola.scrollTop = consola.scrollHeight;
+}
+
+function setStatus(ok, texto) {
+    const dot = document.getElementById('statusDot');
+    const txt = document.getElementById('statusText');
+    dot.className = 'status-dot ' + (ok ? 'green' : 'red');
+    txt.textContent = texto;
+}
+
+function renderTabla(productos) {
+    const cont = document.getElementById('tablaContainer');
+
+    if (!Array.isArray(productos) || productos.length === 0) {
+        cont.innerHTML = '<div class="empty-msg">No hay productos registrados actualmente.</div>';
+        return;
+    }
+
+    let html = '<table><thead><tr>' +
+        '<th>ID</th><th>Código</th><th>Producto</th><th>Precio</th><th>Cantidad</th>' +
+        '</tr></thead><tbody>';
+
+    productos.forEach(p => {
+        html += '<tr>' +
+            '<td>' + p.id + '</td>' +
+            '<td>' + p.codigo + '</td>' +
+            '<td>' + p.producto + '</td>' +
+            '<td>$' + p.precio + '</td>' +
+            '<td>' + p.cantidad + '</td>' +
+            '</tr>';
+    });
+
+    html += '</tbody></table>';
+    cont.innerHTML = html;
+}
+
+// Compara la foto anterior contra la nueva y anota diferencias en el log
+function compararCambios(anterior, nueva) {
+    if (!anterior) return; // Primera carga, no hay nada que comparar
+
+    const mapAnterior = {};
+    anterior.forEach(p => mapAnterior[p.codigo] = p);
+
+    const mapNueva = {};
+    nueva.forEach(p => mapNueva[p.codigo] = p);
+
+    // Productos que ya no están -> fueron eliminados (DELETE)
+    anterior.forEach(p => {
+        if (!mapNueva[p.codigo]) {
+            log('Se detectó un DELETE: el producto con código "' + p.codigo + '" (' + p.producto + ') fue eliminado.', 'err');
+        }
+    });
+
+    // Productos nuevos -> POST
+    nueva.forEach(p => {
+        if (!mapAnterior[p.codigo]) {
+            log('Se detectó un POST: nuevo producto creado con código "' + p.codigo + '" (' + p.producto + ', cantidad: ' + p.cantidad + ', precio: $' + p.precio + ').', 'ok');
+        }
+    });
+
+    // Productos que cambiaron -> PUT
+    nueva.forEach(p => {
+        const prev = mapAnterior[p.codigo];
+        if (prev) {
+            const cambios = [];
+            if (prev.producto !== p.producto) cambios.push('nombre: "' + prev.producto + '" → "' + p.producto + '"');
+            if (String(prev.precio) !== String(p.precio)) cambios.push('precio: $' + prev.precio + ' → $' + p.precio);
+            if (String(prev.cantidad) !== String(p.cantidad)) cambios.push('cantidad: ' + prev.cantidad + ' → ' + p.cantidad);
+
+            if (cambios.length > 0) {
+                log('Se detectó un PUT sobre el producto "' + p.codigo + '": ' + cambios.join(', ') + '.', 'ok');
+            }
+        }
+    });
+}
+
+async function actualizar() {
+    const token = document.getElementById('tokenInput').value.trim();
+
+    if (!token) {
+        log('No se ingresó ningún token. Pega el token JWT generado en Postman.', 'err');
+        setStatus(false, 'Sin token');
+        return;
+    }
+
+    try {
+        const resp = await fetch(API_URL, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token
+            }
+        });
+
+        const data = await resp.json();
+
+        if (resp.status === 401) {
+            log('Solicitud GET rechazada (401): el token no es válido o ya expiró. Genera un token nuevo con POST /login.php.', 'err');
+            setStatus(false, 'Token inválido o expirado (401)');
+            return;
+        }
+
+        if (!resp.ok) {
+            log('La solicitud GET devolvió un error (' + resp.status + '): ' + (data.error || 'error desconocido') + '.', 'err');
+            setStatus(false, 'Error ' + resp.status);
+            return;
+        }
+
+        // Éxito: la API devuelve un arreglo de productos
+        const productos = Array.isArray(data) ? data : [data];
+
+        compararCambios(ultimaFoto, productos);
+        ultimaFoto = productos;
+
+        renderTabla(productos);
+        setStatus(true, 'Conectado - ' + productos.length + ' producto(s) en la base de datos');
+        log('Consulta GET exitosa (200). Productos actuales: ' + productos.length + '.', 'ok');
+
+    } catch (err) {
+        log('No se pudo conectar con la API (' + err.message + '). Verifica que WAMP esté iniciado.', 'err');
+        setStatus(false, 'Sin conexión al servidor');
+    }
+}
+
+function toggleAuto() {
+    const checked = document.getElementById('autoRefresh').checked;
+    const intervalo = parseInt(document.getElementById('intervalo').value);
+
+    if (checked) {
+        log('Auto-actualización activada cada ' + (intervalo / 1000) + ' segundos.', 'info');
+        intervalId = setInterval(actualizar, intervalo);
+    } else {
+        log('Auto-actualización desactivada.', 'info');
+        clearInterval(intervalId);
+    }
+}
+
+document.getElementById('intervalo').addEventListener('change', function() {
+    if (document.getElementById('autoRefresh').checked) {
+        clearInterval(intervalId);
+        const intervalo = parseInt(this.value);
+        intervalId = setInterval(actualizar, intervalo);
+        log('Intervalo de auto-actualización cambiado a ' + (intervalo / 1000) + ' segundos.', 'info');
+    }
+});
+
+log('Panel cargado. Pega tu token JWT y presiona "Actualizar ahora" para comenzar.', 'info');
+</script>
+
+</body>
+</html>
