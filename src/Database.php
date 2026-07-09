@@ -6,6 +6,11 @@ use PDO;
 
 class Database
 {
+    /**
+     * Obtiene la conexion a la base de datos
+     * 
+     * @return PDO Objeto de conexion PDO
+     */
     public static function getConnection(): PDO
     {
         $host = $_ENV['DB_HOST'];

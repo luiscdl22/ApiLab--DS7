@@ -1,9 +1,17 @@
 <?php
+/**
+ * Front Controller - Punto de entrada unico para la API
+ * 
+ * Este archivo actua como controlador frontal, validando el token JWT
+ * antes de derivar las peticiones al controlador correspondiente
+ */
+
 require __DIR__ . '/vendor/autoload.php';
 
 use Deleo\JwtCrud\AuthService;
+use Dotenv\Dotenv;
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 header('Content-Type: application/json');
@@ -13,21 +21,17 @@ $decoded = $auth->validarToken();
 
 if (!$decoded) {
     http_response_code(401);
-    echo json_encode(['error' => 'Token inválido o ausente']);
+    echo json_encode(['error' => 'Token invalido o ausente']);
     exit;
 }
 
 $metodo = $_SERVER['REQUEST_METHOD'];
 
-switch ($metodo) {
-    case 'GET':
-    case 'POST':
-    case 'PUT':
-    case 'DELETE':
-        require __DIR__ . '/api/products.php';
-        break;
-    default:
-        http_response_code(405);
-        echo json_encode(['error' => 'Método no permitido']);
-        break;
+$metodosPermitidos = ['GET', 'POST', 'PUT', 'DELETE'];
+if (!in_array($metodo, $metodosPermitidos)) {
+    http_response_code(405);
+    echo json_encode(['error' => 'Metodo no permitido']);
+    exit;
 }
+
+require __DIR__ . '/api/products.php';

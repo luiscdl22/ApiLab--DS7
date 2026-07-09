@@ -1,10 +1,17 @@
 <?php
+/**
+ * Endpoint de autenticacion
+ * 
+ * Recibe credenciales y retorna un token JWT si son validas
+ */
+
 require __DIR__ . '/vendor/autoload.php';
 
 use Deleo\JwtCrud\Database;
 use Deleo\JwtCrud\AuthService;
+use Dotenv\Dotenv;
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 header('Content-Type: application/json');
@@ -19,7 +26,6 @@ $stmt = $pdo->prepare("SELECT * FROM usuarios WHERE usuario = ?");
 $stmt->execute([$usuario]);
 $user = $stmt->fetch();
 
-// Aquí está el corazón de la validación segura:
 if ($user && password_verify($password, $user['password'])) {
     $auth = new AuthService();
     $token = $auth->generarToken($usuario);
@@ -28,5 +34,5 @@ if ($user && password_verify($password, $user['password'])) {
     echo json_encode(['token' => $token]);
 } else {
     http_response_code(401);
-    echo json_encode(['error' => 'Credenciales inválidas']);
+    echo json_encode(['error' => 'Credenciales invalidas']);
 }

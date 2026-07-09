@@ -15,59 +15,60 @@ class AuthService
 
     public function __construct()
     {
-        // Cargamos las variables de entorno definidas en .env
         $this->secretKey = $_ENV['JWT_SECRET_KEY'];
         $this->issuer    = $_ENV['JWT_ISSUER'];
         $this->expiration = (int) $_ENV['JWT_EXPIRATION'];
     }
 
     /**
-     * Genera un token JWT para un usuario autenticado.
+     * Genera un token JWT para un usuario autenticado
+     * 
+     * @param string $usuario Nombre del usuario autenticado
+     * @return string Token JWT generado
      */
     public function generarToken(string $usuario): string
     {
         $payload = [
-            'iss' => $this->issuer,            // Quién emite el token
-            'iat' => time(),                   // Fecha de emisión
-            'exp' => time() + $this->expiration, // Fecha de expiración
-            'sub' => $usuario                  // Usuario autenticado
+            'iss' => $this->issuer,
+            'iat' => time(),
+            'exp' => time() + $this->expiration,
+            'sub' => $usuario
         ];
 
         return JWT::encode($payload, $this->secretKey, 'HS256');
     }
 
     /**
-     * Valida el token recibido en el header Authorization.
-     * Retorna el payload decodificado si es válido, o null si no lo es.
+     * Valida el token recibido en el header Authorization
+     * 
+     * @return object|null Retorna el payload decodificado si es valido, o null si no lo es
      */
     public function validarToken(): ?object
-{
-    $headers = $this->obtenerHeaders();
+    {
+        $headers = $this->obtenerHeaders();
 
-    if (!isset($headers['Authorization'])) {
-        // DEBUG
-        echo json_encode(['debug' => 'no isset Authorization', 'headers' => $headers]);
-        exit;
+        if (!isset($headers['Authorization'])) {
+            return null;
+        }
+
+        $authHeader = $headers['Authorization'];
+        if (!preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
+            return null;
+        }
+
+        $jwt = $matches[1];
+
+        try {
+            return JWT::decode($jwt, new Key($this->secretKey, 'HS256'));
+        } catch (ExpiredException | SignatureInvalidException | \Exception $e) {
+            return null;
+        }
     }
-
-    $authHeader = $headers['Authorization'];
-    if (!preg_match('/Bearer\s(\S+)/', $authHeader, $matches)) {
-        echo json_encode(['debug' => 'no match regex', 'authHeader' => $authHeader]);
-        exit;
-    }
-
-    $jwt = $matches[1];
-
-    try {
-        return JWT::decode($jwt, new Key($this->secretKey, 'HS256'));
-    } catch (ExpiredException | SignatureInvalidException | \Exception $e) {
-        echo json_encode(['debug' => 'exception', 'mensaje' => $e->getMessage()]);
-        exit;
-    }
-}
 
     /**
-     * Obtiene los headers HTTP de forma compatible con WAMP/Apache.
+     * Obtiene los headers HTTP de forma compatible con diferentes servidores
+     * 
+     * @return array Arreglo con los headers HTTP
      */
     private function obtenerHeaders(): array
     {
@@ -75,7 +76,6 @@ class AuthService
             return getallheaders();
         }
 
-        // Fallback para servidores donde getallheaders() no existe
         $headers = [];
         foreach ($_SERVER as $name => $value) {
             if (substr($name, 0, 5) === 'HTTP_') {

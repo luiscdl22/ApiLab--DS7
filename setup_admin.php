@@ -1,15 +1,22 @@
 <?php
+/**
+ * Script de configuracion inicial
+ * 
+ * Crea el usuario administrador con su contraseña hasheada
+ * Ejecutar solo una vez al iniciar el proyecto
+ */
+
 require __DIR__ . '/vendor/autoload.php';
 
 use Deleo\JwtCrud\Database;
+use Dotenv\Dotenv;
 
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
+$dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 $usuario = 'admin';
-$passwordPlano = 'admin123'; // cámbiala si quieres
+$passwordPlano = 'admin123';
 
-// Aquí está el corazón del Paso 2:
 $hash = password_hash($passwordPlano, PASSWORD_BCRYPT);
 
 $pdo = Database::getConnection();

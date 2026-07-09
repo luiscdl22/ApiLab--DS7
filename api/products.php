@@ -1,4 +1,9 @@
 <?php
+/**
+ * Controlador de productos para la API REST
+ * 
+ * Maneja las operaciones CRUD para la tabla productos
+ */
 
 use Deleo\JwtCrud\Database;
 
@@ -7,12 +12,8 @@ $metodo = $_SERVER['REQUEST_METHOD'];
 
 switch ($metodo) {
 
-    // ============================
-    // GET - Consultar productos
-    // ============================
     case 'GET':
         if (isset($_GET['codigo'])) {
-            // GET de un producto específico
             $stmt = $pdo->prepare("SELECT * FROM productos WHERE codigo = ?");
             $stmt->execute([$_GET['codigo']]);
             $producto = $stmt->fetch();
@@ -25,7 +26,6 @@ switch ($metodo) {
                 echo json_encode(['error' => 'Producto no encontrado']);
             }
         } else {
-            // GET de todos los productos
             $stmt = $pdo->query("SELECT * FROM productos");
             $productos = $stmt->fetchAll();
 
@@ -34,13 +34,9 @@ switch ($metodo) {
         }
         break;
 
-    // ============================
-    // POST - Crear producto
-    // ============================
     case 'POST':
         $data = json_decode(file_get_contents('php://input'), true);
 
-        // Validación básica de campos requeridos
         if (!isset($data['codigo'], $data['producto'], $data['precio'], $data['cantidad'])) {
             http_response_code(400);
             echo json_encode(['error' => 'Faltan campos requeridos: codigo, producto, precio, cantidad']);
@@ -58,7 +54,7 @@ switch ($metodo) {
                 $data['cantidad']
             ]);
 
-            http_response_code(201); // 201 = recurso creado
+            http_response_code(201);
             echo json_encode([
                 'mensaje' => 'Producto creado correctamente',
                 'id' => $pdo->lastInsertId()
@@ -69,9 +65,6 @@ switch ($metodo) {
         }
         break;
 
-    // ============================
-    // PUT - Actualizar producto
-    // ============================
     case 'PUT':
         $data = json_decode(file_get_contents('php://input'), true);
 
@@ -81,7 +74,6 @@ switch ($metodo) {
             exit;
         }
 
-        // Verificamos que el producto exista antes de actualizar
         $stmt = $pdo->prepare("SELECT * FROM productos WHERE codigo = ?");
         $stmt->execute([$data['codigo']]);
         $producto = $stmt->fetch();
@@ -111,9 +103,6 @@ switch ($metodo) {
         }
         break;
 
-    // ============================
-    // DELETE - Eliminar producto
-    // ============================
     case 'DELETE':
         $data = json_decode(file_get_contents('php://input'), true);
 
@@ -142,6 +131,6 @@ switch ($metodo) {
 
     default:
         http_response_code(405);
-        echo json_encode(['error' => 'Método no permitido']);
+        echo json_encode(['error' => 'Metodo no permitido']);
         break;
 }
