@@ -126,17 +126,24 @@
     }
     .status-dot.green { background: #4caf50; }
     .status-dot.red { background: #e53935; }
+    .clear-btn {
+        background: #e53935;
+        margin-left: 10px;
+        padding: 4px 12px;
+        font-size: 12px;
+    }
+    .clear-btn:hover { background: #c62828; }
 </style>
 </head>
 <body>
 
 <h1>Panel de Monitoreo - JWT_CRUD API</h1>
-<div class="subtitle">Visualiza en tiempo real el estado de la tabla "productos" y un registro de las operaciones realizadas.</div>
+<div class="subtitle">Visualiza en tiempo real el estado de la tabla productos y un registro de las operaciones realizadas.</div>
 
 <div class="panel">
     <h2>Token de acceso</h2>
     <div class="token-row">
-        <input type="text" id="tokenInput" placeholder="Pega aquí el token JWT obtenido en Postman (POST /login.php)">
+        <input type="text" id="tokenInput" placeholder="Pega aqui el token JWT obtenido en Postman (POST /login.php)">
         <button onclick="actualizar()">Actualizar ahora</button>
         <label class="auto-row">
             <input type="checkbox" id="autoRefresh" onchange="toggleAuto()">
@@ -145,6 +152,7 @@
                 <option value="3000">3s</option>
                 <option value="5000" selected>5s</option>
                 <option value="10000">10s</option>
+                <option value="15000">15s</option>
             </select>
         </label>
     </div>
@@ -153,7 +161,11 @@
 <div class="panel">
     <div class="top-controls">
         <h2 style="margin:0; border:none; padding:0;">Estado actual de la base de datos (tabla productos)</h2>
-        <div><span class="status-dot" id="statusDot"></span><span id="statusText">Sin conexión</span></div>
+        <div>
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Sin conexion</span>
+            <button class="clear-btn" onclick="limpiarConsola()">Limpiar log</button>
+        </div>
     </div>
     <div id="tablaContainer">
         <div class="empty-msg">Pega tu token y presiona "Actualizar ahora" para cargar los productos.</div>
@@ -166,13 +178,22 @@
 </div>
 
 <script>
-const API_URL = "index.php"; // Misma carpeta que este archivo (JWT_CRUD/)
+const API_URL = "index.php";
 let intervalId = null;
-let ultimaFoto = null; // Para detectar cambios entre actualizaciones
+let ultimaFoto = null;
+
+// Almacena los cambios que ya fueron reportados para evitar duplicados
+let cambiosReportados = new Set();
 
 function ahora() {
     const d = new Date();
     return d.toLocaleTimeString('es-PA', { hour12: false });
+}
+
+function limpiarConsola() {
+    const consola = document.getElementById('consola');
+    consola.innerHTML = '';
+    log('Consola limpiada.', 'info');
 }
 
 function log(mensaje, tipo) {
@@ -200,7 +221,7 @@ function renderTabla(productos) {
     }
 
     let html = '<table><thead><tr>' +
-        '<th>ID</th><th>Código</th><th>Producto</th><th>Precio</th><th>Cantidad</th>' +
+        '<th>ID</th><th>Codigo</th><th>Producto</th><th>Precio</th><th>Cantidad</th>' +
         '</tr></thead><tbody>';
 
     productos.forEach(p => {
@@ -217,9 +238,14 @@ function renderTabla(productos) {
     cont.innerHTML = html;
 }
 
-// Compara la foto anterior contra la nueva y anota diferencias en el log
+function generarClaveCambio(producto, tipo) {
+    // Genera una clave unica para cada cambio
+    // Usamos el codigo + los valores + el tipo para detectar cambios unicos
+    return tipo + '_' + producto.codigo + '_' + producto.producto + '_' + producto.precio + '_' + producto.cantidad;
+}
+
 function compararCambios(anterior, nueva) {
-    if (!anterior) return; // Primera carga, no hay nada que comparar
+    if (!anterior) return;
 
     const mapAnterior = {};
     anterior.forEach(p => mapAnterior[p.codigo] = p);
@@ -227,21 +253,36 @@ function compararCambios(anterior, nueva) {
     const mapNueva = {};
     nueva.forEach(p => mapNueva[p.codigo] = p);
 
-    // Productos que ya no están -> fueron eliminados (DELETE)
+    // Detectar DELETE
     anterior.forEach(p => {
         if (!mapNueva[p.codigo]) {
-            log('Se detectó un DELETE: el producto con código "' + p.codigo + '" (' + p.producto + ') fue eliminado.', 'err');
+            const clave = generarClaveCambio(p, 'DELETE');
+            if (!cambiosReportados.has(clave)) {
+                log('Se detecto un DELETE: el producto con codigo "' + p.codigo + '" (' + p.producto + ') fue eliminado.', 'err');
+                cambiosReportados.add(clave);
+                // Limpiar despues de 10 segundos
+                setTimeout(() => {
+                    cambiosReportados.delete(clave);
+                }, 10000);
+            }
         }
     });
 
-    // Productos nuevos -> POST
+    // Detectar POST
     nueva.forEach(p => {
         if (!mapAnterior[p.codigo]) {
-            log('Se detectó un POST: nuevo producto creado con código "' + p.codigo + '" (' + p.producto + ', cantidad: ' + p.cantidad + ', precio: $' + p.precio + ').', 'ok');
+            const clave = generarClaveCambio(p, 'POST');
+            if (!cambiosReportados.has(clave)) {
+                log('Se detecto un POST: nuevo producto creado con codigo "' + p.codigo + '" (' + p.producto + ', cantidad: ' + p.cantidad + ', precio: $' + p.precio + ').', 'ok');
+                cambiosReportados.add(clave);
+                setTimeout(() => {
+                    cambiosReportados.delete(clave);
+                }, 10000);
+            }
         }
     });
 
-    // Productos que cambiaron -> PUT
+    // Detectar PUT
     nueva.forEach(p => {
         const prev = mapAnterior[p.codigo];
         if (prev) {
@@ -251,7 +292,16 @@ function compararCambios(anterior, nueva) {
             if (String(prev.cantidad) !== String(p.cantidad)) cambios.push('cantidad: ' + prev.cantidad + ' → ' + p.cantidad);
 
             if (cambios.length > 0) {
-                log('Se detectó un PUT sobre el producto "' + p.codigo + '": ' + cambios.join(', ') + '.', 'ok');
+                // Generar clave unica para este cambio especifico
+                const clave = 'PUT_' + p.codigo + '_' + cambios.join('_');
+                if (!cambiosReportados.has(clave)) {
+                    log('Se detecto un PUT sobre el producto "' + p.codigo + '": ' + cambios.join(', ') + '.', 'ok');
+                    cambiosReportados.add(clave);
+                    // Limpiar despues de 10 segundos para permitir reportar nuevos cambios
+                    setTimeout(() => {
+                        cambiosReportados.delete(clave);
+                    }, 10000);
+                }
             }
         }
     });
@@ -261,7 +311,7 @@ async function actualizar() {
     const token = document.getElementById('tokenInput').value.trim();
 
     if (!token) {
-        log('No se ingresó ningún token. Pega el token JWT generado en Postman.', 'err');
+        log('No se ingreso ningun token. Pega el token JWT generado en Postman.', 'err');
         setStatus(false, 'Sin token');
         return;
     }
@@ -277,30 +327,32 @@ async function actualizar() {
         const data = await resp.json();
 
         if (resp.status === 401) {
-            log('Solicitud GET rechazada (401): el token no es válido o ya expiró. Genera un token nuevo con POST /login.php.', 'err');
-            setStatus(false, 'Token inválido o expirado (401)');
+            log('Solicitud GET rechazada (401): el token no es valido o ya expiro. Genera un token nuevo con POST /login.php.', 'err');
+            setStatus(false, 'Token invalido o expirado (401)');
             return;
         }
 
         if (!resp.ok) {
-            log('La solicitud GET devolvió un error (' + resp.status + '): ' + (data.error || 'error desconocido') + '.', 'err');
+            log('La solicitud GET devolvio un error (' + resp.status + '): ' + (data.error || 'error desconocido') + '.', 'err');
             setStatus(false, 'Error ' + resp.status);
             return;
         }
 
-        // Éxito: la API devuelve un arreglo de productos
         const productos = Array.isArray(data) ? data : [data];
 
+        // Comparar cambios ANTES de actualizar ultimaFoto
         compararCambios(ultimaFoto, productos);
-        ultimaFoto = productos;
+
+        // Actualizar la foto con los datos actuales
+        ultimaFoto = JSON.parse(JSON.stringify(productos));
 
         renderTabla(productos);
         setStatus(true, 'Conectado - ' + productos.length + ' producto(s) en la base de datos');
         log('Consulta GET exitosa (200). Productos actuales: ' + productos.length + '.', 'ok');
 
     } catch (err) {
-        log('No se pudo conectar con la API (' + err.message + '). Verifica que WAMP esté iniciado.', 'err');
-        setStatus(false, 'Sin conexión al servidor');
+        log('No se pudo conectar con la API (' + err.message + '). Verifica que WAMP este iniciado.', 'err');
+        setStatus(false, 'Sin conexion al servidor');
     }
 }
 
@@ -309,11 +361,14 @@ function toggleAuto() {
     const intervalo = parseInt(document.getElementById('intervalo').value);
 
     if (checked) {
-        log('Auto-actualización activada cada ' + (intervalo / 1000) + ' segundos.', 'info');
+        log('Auto-actualizacion activada cada ' + (intervalo / 1000) + ' segundos.', 'info');
+        // Ejecutar inmediatamente al activar
+        actualizar();
         intervalId = setInterval(actualizar, intervalo);
     } else {
-        log('Auto-actualización desactivada.', 'info');
+        log('Auto-actualizacion desactivada.', 'info');
         clearInterval(intervalId);
+        intervalId = null;
     }
 }
 
@@ -321,8 +376,8 @@ document.getElementById('intervalo').addEventListener('change', function() {
     if (document.getElementById('autoRefresh').checked) {
         clearInterval(intervalId);
         const intervalo = parseInt(this.value);
+        log('Intervalo de auto-actualizacion cambiado a ' + (intervalo / 1000) + ' segundos.', 'info');
         intervalId = setInterval(actualizar, intervalo);
-        log('Intervalo de auto-actualización cambiado a ' + (intervalo / 1000) + ' segundos.', 'info');
     }
 });
 
